@@ -107,6 +107,125 @@ pub unsafe extern "C" fn fil_write_without_alignment(
     })
 }
 
+
+/// TODO: document
+///
+#[no_mangle]
+pub unsafe extern "C" fn fil_seal_pre_commit_phase1_tree(
+    registered_proof: fil_RegisteredSealProof,
+    cache_dir_path: *const libc::c_char,
+    staged_sector_path: *const libc::c_char,
+    sealed_sector_path: *const libc::c_char,
+    sector_id: u64,
+    prover_id: fil_32ByteArray,
+    ticket: fil_32ByteArray,
+    pieces_ptr: *const fil_PublicPieceInfo,
+    pieces_len: libc::size_t,
+) -> *mut fil_SealPreCommitPhase1Response {
+    catch_panic_response(|| {
+        init_log();
+
+        info!("fil_seal_pre_commit_phase1_tree: start");
+
+        let public_pieces: Vec<PieceInfo> = from_raw_parts(pieces_ptr, pieces_len)
+            .iter()
+            .cloned()
+            .map(Into::into)
+            .collect();
+
+        let mut response: fil_SealPreCommitPhase1Response = Default::default();
+
+        let result = filecoin_proofs_api::seal::seal_pre_commit_phase1_tree(
+            registered_proof.into(),
+            c_str_to_pbuf(cache_dir_path),
+            c_str_to_pbuf(staged_sector_path),
+            c_str_to_pbuf(sealed_sector_path),
+            prover_id.inner,
+            SectorId::from(sector_id),
+            ticket.inner,
+            &public_pieces,
+        )
+            .and_then(|output| serde_json::to_vec(&output).map_err(Into::into));
+
+        match result {
+            Ok(output) => {
+                response.status_code = FCPResponseStatus::FCPNoError;
+                response.seal_pre_commit_phase1_output_ptr = output.as_ptr();
+                response.seal_pre_commit_phase1_output_len = output.len();
+                mem::forget(output);
+            }
+            Err(err) => {
+                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+                response.error_msg = rust_str_to_c_str(format!("{:?}", err));
+            }
+        }
+
+        info!("fil_seal_pre_commit_phase1_tree: finish");
+
+        raw_ptr(response)
+    })
+}
+
+/// TODO: document
+///
+#[no_mangle]
+pub unsafe extern "C" fn fil_seal_pre_commit_phase1_layer(
+    registered_proof: fil_RegisteredSealProof,
+    cache_dir_path: *const libc::c_char,
+    staged_sector_path: *const libc::c_char,
+    sealed_sector_path: *const libc::c_char,
+    sector_id: u64,
+    prover_id: fil_32ByteArray,
+    ticket: fil_32ByteArray,
+    pieces_ptr: *const fil_PublicPieceInfo,
+    pieces_len: libc::size_t,
+) -> *mut fil_SealPreCommitPhase1Response {
+    catch_panic_response(|| {
+        init_log();
+
+        info!("fil_seal_pre_commit_phase1_layer: start");
+
+        let public_pieces: Vec<PieceInfo> = from_raw_parts(pieces_ptr, pieces_len)
+            .iter()
+            .cloned()
+            .map(Into::into)
+            .collect();
+
+        let mut response: fil_SealPreCommitPhase1Response = Default::default();
+
+        let result = filecoin_proofs_api::seal::seal_pre_commit_phase1_layer(
+            registered_proof.into(),
+            c_str_to_pbuf(cache_dir_path),
+            c_str_to_pbuf(staged_sector_path),
+            c_str_to_pbuf(sealed_sector_path),
+            prover_id.inner,
+            SectorId::from(sector_id),
+            ticket.inner,
+            &public_pieces,
+        )
+            .and_then(|output| serde_json::to_vec(&output).map_err(Into::into));
+
+        match result {
+            Ok(output) => {
+                response.status_code = FCPResponseStatus::FCPNoError;
+                response.seal_pre_commit_phase1_output_ptr = output.as_ptr();
+                response.seal_pre_commit_phase1_output_len = output.len();
+                mem::forget(output);
+            }
+            Err(err) => {
+                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+                response.error_msg = rust_str_to_c_str(format!("{:?}", err));
+            }
+        }
+
+        info!("fil_seal_pre_commit_phase1_layer: finish");
+
+        raw_ptr(response)
+    })
+}
+
+
+
 /// TODO: document
 ///
 #[no_mangle]
