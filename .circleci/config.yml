@@ -101,7 +101,6 @@ jobs:
       - run: cd rust && rustup component add rustfmt
       - run: cd rust && rustup component add clippy
       - run: cd rust && cargo fetch
-      - run: cd rust && rustc +stable --version
       - run: cd rust && rustc +$(cat rust-toolchain) --version
       - persist_to_workspace:
           root: "."
@@ -330,10 +329,10 @@ commands:
     steps:
       - restore_cache:
           keys:
-            - v26d-proof-params-{{ arch }}
+            - v27-proof-params-{{ arch }}
   save_parameter_cache:
     steps:
       - save_cache:
-          key: v26d-proof-params-{{ arch }}
+          key: v27-proof-params-{{ arch }}
           paths:
             - "~/filecoin-proof-parameters/"

@@ -3,8 +3,8 @@ use ffi_toolkit::{
 };
 use filecoin_proofs_api::seal::SealPreCommitPhase2Output;
 use filecoin_proofs_api::{
-    PaddedBytesAmount, PieceInfo, RegisteredPoStProof, RegisteredSealProof, SectorId,
-    UnpaddedByteIndex, UnpaddedBytesAmount,
+    PieceInfo, RegisteredPoStProof, RegisteredSealProof, SectorId, UnpaddedByteIndex,
+    UnpaddedBytesAmount,
 };
 use log::info;
 use std::mem;
@@ -107,7 +107,6 @@ pub unsafe extern "C" fn fil_write_without_alignment(
     })
 }
 
-
 /// TODO: document
 ///
 #[no_mangle]
@@ -125,7 +124,7 @@ pub unsafe extern "C" fn fil_seal_pre_commit_phase1_tree(
     catch_panic_response(|| {
         init_log();
 
-        info!("fil_seal_pre_commit_phase1_tree: start");
+        info!("seal_pre_commit_phase1: start");
 
         let public_pieces: Vec<PieceInfo> = from_raw_parts(pieces_ptr, pieces_len)
             .iter()
@@ -160,11 +159,12 @@ pub unsafe extern "C" fn fil_seal_pre_commit_phase1_tree(
             }
         }
 
-        info!("fil_seal_pre_commit_phase1_tree: finish");
+        info!("seal_pre_commit_phase1: finish");
 
         raw_ptr(response)
     })
 }
+
 
 /// TODO: document
 ///
@@ -183,7 +183,7 @@ pub unsafe extern "C" fn fil_seal_pre_commit_phase1_layer(
     catch_panic_response(|| {
         init_log();
 
-        info!("fil_seal_pre_commit_phase1_layer: start");
+        info!("seal_pre_commit_phase1: start");
 
         let public_pieces: Vec<PieceInfo> = from_raw_parts(pieces_ptr, pieces_len)
             .iter()
@@ -218,12 +218,11 @@ pub unsafe extern "C" fn fil_seal_pre_commit_phase1_layer(
             }
         }
 
-        info!("fil_seal_pre_commit_phase1_layer: finish");
+        info!("seal_pre_commit_phase1: finish");
 
         raw_ptr(response)
     })
 }
-
 
 
 /// TODO: document
@@ -447,83 +446,44 @@ pub unsafe extern "C" fn fil_seal_commit_phase2(
 
 /// TODO: document
 #[no_mangle]
-pub unsafe extern "C" fn fil_unseal(
-    registered_proof: fil_RegisteredSealProof,
-    cache_dir_path: *const libc::c_char,
-    sealed_sector_path: *const libc::c_char,
-    unseal_output_path: *const libc::c_char,
-    sector_id: u64,
-    prover_id: fil_32ByteArray,
-    ticket: fil_32ByteArray,
-    comm_d: fil_32ByteArray,
-) -> *mut fil_UnsealResponse {
-    catch_panic_response(|| {
-        init_log();
-
-        info!("unseal: start");
-        let registered_proof: RegisteredSealProof = registered_proof.into();
-        let result = filecoin_proofs_api::seal::get_unsealed_range(
-            registered_proof,
-            c_str_to_pbuf(cache_dir_path),
-            c_str_to_pbuf(sealed_sector_path),
-            c_str_to_pbuf(unseal_output_path),
-            prover_id.inner,
-            SectorId::from(sector_id),
-            comm_d.inner,
-            ticket.inner,
-            UnpaddedByteIndex(0u64),
-            UnpaddedBytesAmount::from(PaddedBytesAmount(u64::from(registered_proof.sector_size()))),
-        );
-
-        let mut response = fil_UnsealResponse::default();
-
-        match result {
-            Ok(_) => {
-                response.status_code = FCPResponseStatus::FCPNoError;
-            }
-            Err(err) => {
-                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
-                response.error_msg = rust_str_to_c_str(format!("{:?}", err));
-            }
-        };
-
-        info!("unseal: finish");
-
-        raw_ptr(response)
-    })
-}
-
-/// TODO: document
-#[no_mangle]
 pub unsafe extern "C" fn fil_unseal_range(
     registered_proof: fil_RegisteredSealProof,
     cache_dir_path: *const libc::c_char,
-    sealed_sector_path: *const libc::c_char,
-    unseal_output_path: *const libc::c_char,
+    sealed_sector_fd_raw: libc::c_int,
+    unseal_output_fd_raw: libc::c_int,
     sector_id: u64,
     prover_id: fil_32ByteArray,
     ticket: fil_32ByteArray,
     comm_d: fil_32ByteArray,
-    offset: u64,
-    length: u64,
+    unpadded_byte_index: u64,
+    unpadded_bytes_amount: u64,
 ) -> *mut fil_UnsealRangeResponse {
     catch_panic_response(|| {
         init_log();
 
         info!("unseal_range: start");
 
-        let result = filecoin_proofs_api::seal::get_unsealed_range(
+        use std::os::unix::io::{FromRawFd, IntoRawFd};
+
+        let mut sealed_sector = std::fs::File::from_raw_fd(sealed_sector_fd_raw);
+        let mut unseal_output = std::fs::File::from_raw_fd(unseal_output_fd_raw);
+
+        let result = filecoin_proofs_api::seal::unseal_range(
             registered_proof.into(),
             c_str_to_pbuf(cache_dir_path),
-            c_str_to_pbuf(sealed_sector_path),
-            c_str_to_pbuf(unseal_output_path),
+            &mut sealed_sector,
+            &mut unseal_output,
             prover_id.inner,
             SectorId::from(sector_id),
             comm_d.inner,
             ticket.inner,
-            UnpaddedByteIndex(offset),
-            UnpaddedBytesAmount(length),
+            UnpaddedByteIndex(unpadded_byte_index),
+            UnpaddedBytesAmount(unpadded_bytes_amount),
         );
+
+        // keep all file descriptors alive until unseal_range returns
+        let _ = sealed_sector.into_raw_fd();
+        let _ = unseal_output.into_raw_fd();
 
         let mut response = fil_UnsealRangeResponse::default();
 
@@ -1009,11 +969,6 @@ pub unsafe extern "C" fn fil_destroy_seal_commit_phase2_response(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn fil_destroy_unseal_response(ptr: *mut fil_UnsealResponse) {
-    let _ = Box::from_raw(ptr);
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn fil_destroy_unseal_range_response(ptr: *mut fil_UnsealRangeResponse) {
     let _ = Box::from_raw(ptr);
 }
@@ -1474,10 +1429,10 @@ pub mod tests {
         let (staged_file, staged_path) = tempfile::NamedTempFile::new()?.keep()?;
 
         // create a temp file to be used as the byte destination
-        let (_, sealed_path) = tempfile::NamedTempFile::new()?.keep()?;
+        let (sealed_file, sealed_path) = tempfile::NamedTempFile::new()?.keep()?;
 
         // last temp file is used to output unsealed bytes
-        let (_, unseal_path) = tempfile::NamedTempFile::new()?.keep()?;
+        let (unseal_file, unseal_path) = tempfile::NamedTempFile::new()?.keep()?;
 
         // transmute temp files to file descriptors
         let piece_file_a_fd = piece_file_a.into_raw_fd();
@@ -1625,15 +1580,17 @@ pub mod tests {
 
             assert!((*resp_d).is_valid, "proof was not valid");
 
-            let resp_e = fil_unseal(
+            let resp_e = fil_unseal_range(
                 registered_proof_seal,
                 cache_dir_path_c_str,
-                replica_path_c_str,
-                unseal_path_c_str,
+                sealed_file.into_raw_fd(),
+                unseal_file.into_raw_fd(),
                 sector_id,
                 prover_id,
                 ticket,
                 wrap((*resp_b2).comm_d),
+                0,
+                2032,
             );
 
             if (*resp_e).status_code != FCPResponseStatus::FCPNoError {
@@ -1645,7 +1602,6 @@ pub mod tests {
             let mut buf_b = Vec::with_capacity(2032);
             let mut f = std::fs::File::open(unseal_path)?;
 
-            #[allow(clippy::verbose_file_reads)]
             let _ = f.read_to_end(&mut buf_b)?;
 
             let piece_a_len = (*resp_a1).total_write_unpadded as usize;
@@ -1791,7 +1747,7 @@ pub mod tests {
             fil_destroy_seal_commit_phase2_response(resp_c2);
 
             fil_destroy_verify_seal_response(resp_d);
-            fil_destroy_unseal_response(resp_e);
+            fil_destroy_unseal_range_response(resp_e);
 
             fil_destroy_generate_winning_post_sector_challenge(resp_f);
             fil_destroy_generate_winning_post_response(resp_h);
