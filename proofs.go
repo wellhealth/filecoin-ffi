@@ -256,10 +256,9 @@ func WriteWithoutAlignment(
 	return abi.UnpaddedPieceSize(resp.TotalWriteUnpadded), commcid.PieceCommitmentV1ToCID(resp.CommP[:]), nil
 }
 
-
-// SealPreCommitPhase1Tree
+// SealPreCommitPhase1
 func SealPreCommitPhase1Tree(
-	proofType abi.RegisteredProof,
+	proofType abi.RegisteredSealProof,
 	cacheDirPath string,
 	stagedSectorPath string,
 	sealedSectorPath string,
@@ -294,9 +293,11 @@ func SealPreCommitPhase1Tree(
 
 	return []byte(toGoStringCopy(resp.SealPreCommitPhase1OutputPtr, resp.SealPreCommitPhase1OutputLen)), nil
 }
-// SealPreCommitPhase1Layer
+
+
+// SealPreCommitPhase1
 func SealPreCommitPhase1Layer(
-	proofType abi.RegisteredProof,
+	proofType abi.RegisteredSealProof,
 	cacheDirPath string,
 	stagedSectorPath string,
 	sealedSectorPath string,
