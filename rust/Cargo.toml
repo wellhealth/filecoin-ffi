@@ -1,7 +1,7 @@
 [package]
 name = "filcrypto"
 description = "FFI Interface to Filecoin Proofs"
-version = "0.7.3"
+version = "0.7.4"
 authors = ["laser <l@s3r.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/filecoin-project/filecoin-ffi"
