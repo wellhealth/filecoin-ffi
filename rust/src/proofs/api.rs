@@ -107,6 +107,42 @@ pub unsafe extern "C" fn fil_write_without_alignment(
     })
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn fil_fauxrep(
+    registered_proof: fil_RegisteredSealProof,
+    cache_dir_path: *const libc::c_char,
+    sealed_sector_path: *const libc::c_char,
+) -> *mut fil_FauxRepResponse {
+    catch_panic_response(|| {
+        init_log();
+
+        info!("fauxrep: start");
+
+        let mut response: fil_FauxRepResponse = Default::default();
+
+        let result = filecoin_proofs_api::seal::fauxrep(
+            registered_proof.into(),
+            c_str_to_pbuf(cache_dir_path),
+            c_str_to_pbuf(sealed_sector_path),
+        );
+
+        match result {
+            Ok(output) => {
+                response.status_code = FCPResponseStatus::FCPNoError;
+                response.commitment = output;
+            }
+            Err(err) => {
+                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+                response.error_msg = rust_str_to_c_str(format!("{:?}", err));
+            }
+        }
+
+        info!("fauxrep: finish");
+
+        raw_ptr(response)
+    })
+}
+
 /// TODO: document
 ///
 #[no_mangle]
@@ -941,6 +977,11 @@ pub unsafe extern "C" fn fil_destroy_write_without_alignment_response(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn fil_destroy_fauxrep_response(ptr: *mut fil_FauxRepResponse) {
+    let _ = Box::from_raw(ptr);
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn fil_destroy_seal_pre_commit_phase1_response(
     ptr: *mut fil_SealPreCommitPhase1Response,
 ) {
@@ -1137,7 +1178,6 @@ unsafe fn registered_seal_proof_accessor(
 
     match op(rsp) {
         Ok(s) => {
-            dbg!(&s);
             response.status_code = FCPResponseStatus::FCPNoError;
             response.string_val = rust_str_to_c_str(s);
         }
@@ -1238,7 +1278,7 @@ pub mod tests {
     use rand::{thread_rng, Rng};
 
     use super::*;
-    use std::ffi::CString;
+    use std::ffi::CStr;
 
     #[test]
     fn test_write_with_and_without_alignment() -> Result<()> {
@@ -1383,8 +1423,8 @@ pub mod tests {
                     c_str_to_rust_str((*r).error_msg)
                 );
 
-                let x = CString::from_raw((*r).string_val as *mut libc::c_char);
-                let y = x.into_string().unwrap_or_else(|_| String::from(""));
+                let x = CStr::from_ptr((*r).string_val);
+                let y = x.to_str().unwrap();
 
                 assert!(!y.is_empty());
 
