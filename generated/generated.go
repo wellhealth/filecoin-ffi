@@ -678,7 +678,7 @@ func FilSealPreCommitPhase1Layer(registeredProof FilRegisteredSealProof, cacheDi
 	cticket, cticketAllocMap := ticket.PassValue()
 	cpiecesPtr, cpiecesPtrAllocMap := unpackArgSFilPublicPieceInfo(piecesPtr)
 	cpiecesLen, cpiecesLenAllocMap := (C.size_t)(piecesLen), cgoAllocsUnknown
-	__ret := C.fil_seal_pre_commit_phase1_tree(cregisteredProof, ccacheDirPath, cstagedSectorPath, csealedSectorPath, csectorId, cproverId, cticket, cpiecesPtr, cpiecesLen)
+	__ret := C.fil_seal_pre_commit_phase1_layer(cregisteredProof, ccacheDirPath, cstagedSectorPath, csealedSectorPath, csectorId, cproverId, cticket, cpiecesPtr, cpiecesLen)
 	runtime.KeepAlive(cpiecesLenAllocMap)
 	packSFilPublicPieceInfo(piecesPtr, cpiecesPtr)
 	runtime.KeepAlive(cpiecesPtrAllocMap)
