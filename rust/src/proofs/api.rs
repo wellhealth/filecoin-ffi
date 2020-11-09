@@ -723,6 +723,8 @@ pub unsafe extern "C" fn fil_generate_window_post(
                 mem::forget(mapped);
             }
             Err(err) => {
+                info!("{:?}", err);
+
                 // If there were faulty sectors, add them to the response
                 if let Some(filecoin_proofs_api::StorageProofsError::FaultySectors(sectors)) =
                     err.downcast_ref::<filecoin_proofs_api::StorageProofsError>()
@@ -738,6 +740,7 @@ pub unsafe extern "C" fn fil_generate_window_post(
 
                 response.status_code = FCPResponseStatus::FCPUnclassifiedError;
                 response.error_msg = rust_str_to_c_str(format!("{:?}", err));
+
             }
         }
 
