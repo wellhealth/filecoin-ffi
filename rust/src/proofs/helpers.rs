@@ -83,7 +83,7 @@ pub unsafe fn to_private_replica_info_map(
             let cache_dir_path = c_str_to_pbuf(ffi_info.cache_dir_path);
             let replica_path = c_str_to_rust_str(ffi_info.replica_path).to_string();
 
-            info!("{:?}/{:?}", cache_dir_path, replica_path);
+            info!("ffi:{:?}/{:?}", cache_dir_path, replica_path);
 
             PrivateReplicaInfoTmp {
                 registered_proof: ffi_info.registered_proof,
