@@ -8,6 +8,7 @@ use filecoin_proofs_api::{PrivateReplicaInfo, PublicReplicaInfo, SectorId};
 
 use super::types::{fil_PrivateReplicaInfo, fil_PublicReplicaInfo, fil_RegisteredPoStProof};
 use crate::proofs::types::{fil_PoStProof, PoStProof};
+use log::info;
 
 #[derive(Debug, Clone)]
 struct PublicReplicaInfoTmp {
@@ -69,13 +70,20 @@ pub unsafe fn to_private_replica_info_map(
 ) -> Result<BTreeMap<SectorId, PrivateReplicaInfo>> {
     use rayon::prelude::*;
 
+    info!("to_private_replica_info_map 0");
+
     ensure!(!replicas_ptr.is_null(), "replicas_ptr must not be null");
+
+    info!("to_private_replica_info_map 1");
 
     let replicas: Vec<_> = from_raw_parts(replicas_ptr, replicas_len)
         .iter()
         .map(|ffi_info| {
+
             let cache_dir_path = c_str_to_pbuf(ffi_info.cache_dir_path);
             let replica_path = c_str_to_rust_str(ffi_info.replica_path).to_string();
+
+            info!("{:?}/{:?}", cache_dir_path, replica_path);
 
             PrivateReplicaInfoTmp {
                 registered_proof: ffi_info.registered_proof,
@@ -86,6 +94,8 @@ pub unsafe fn to_private_replica_info_map(
             }
         })
         .collect();
+
+    info!("to_private_replica_info_map 2");
 
     let map = replicas
         .into_par_iter()
@@ -110,6 +120,7 @@ pub unsafe fn to_private_replica_info_map(
         })
         .collect();
 
+    info!("to_private_replica_info_map 3");
     Ok(map)
 }
 

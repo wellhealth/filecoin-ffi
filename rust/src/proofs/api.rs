@@ -695,9 +695,13 @@ pub unsafe extern "C" fn fil_generate_window_post(
 
         let mut response = fil_GenerateWindowPoStResponse::default();
 
+        info!("generate_window_post: 00");
+
         let result = to_private_replica_info_map(replicas_ptr, replicas_len).and_then(|rs| {
             filecoin_proofs_api::post::generate_window_post(&randomness.inner, &rs, prover_id.inner)
         });
+
+        info!("generate_window_post: 11");
 
         match result {
             Ok(output) => {
@@ -723,7 +727,7 @@ pub unsafe extern "C" fn fil_generate_window_post(
                 mem::forget(mapped);
             }
             Err(err) => {
-                info!("{:?}", err);
+                info!("generate_window_post the err {:?}", err);
 
                 // If there were faulty sectors, add them to the response
                 if let Some(filecoin_proofs_api::StorageProofsError::FaultySectors(sectors)) =
