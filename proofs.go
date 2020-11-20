@@ -45,7 +45,7 @@ func VerifySeal(info proof.SealVerifyInfo) (bool, error) {
 		return false, err
 	}
 
-	resp := generated.FilVerifySeal(sp, commR, commD, proverID, to32ByteArray(info.Randomness), to32ByteArray(info.InteractiveRandomness), uint64(info.SectorID.Number), string(info.Proof), uint(len(info.Proof)))
+	resp := generated.FilVerifySeal(sp, commR, commD, proverID, to32ByteArray(info.Randomness), to32ByteArray(info.InteractiveRandomness), uint64(info.SectorID.Number), info.Proof, uint(len(info.Proof)))
 	resp.Deref()
 
 	defer generated.FilDestroyVerifySealResponse(resp)
@@ -384,7 +384,7 @@ func SealPreCommitPhase1(
 		return nil, errors.New(generated.RawString(resp.ErrorMsg).Copy())
 	}
 
-	return []byte(toGoStringCopy(resp.SealPreCommitPhase1OutputPtr, resp.SealPreCommitPhase1OutputLen)), nil
+	return copyBytes(resp.SealPreCommitPhase1OutputPtr, resp.SealPreCommitPhase1OutputLen), nil
 }
 
 // SealPreCommitPhase2
@@ -393,7 +393,7 @@ func SealPreCommitPhase2(
 	cacheDirPath string,
 	sealedSectorPath string,
 ) (sealedCID cid.Cid, unsealedCID cid.Cid, err error) {
-	resp := generated.FilSealPreCommitPhase2(string(phase1Output), uint(len(phase1Output)), cacheDirPath, sealedSectorPath)
+	resp := generated.FilSealPreCommitPhase2(phase1Output, uint(len(phase1Output)), cacheDirPath, sealedSectorPath)
 	resp.Deref()
 
 	defer generated.FilDestroySealPreCommitPhase2Response(resp)
@@ -461,7 +461,7 @@ func SealCommitPhase1(
 		return nil, errors.New(generated.RawString(resp.ErrorMsg).Copy())
 	}
 
-	return []byte(toGoStringCopy(resp.SealCommitPhase1OutputPtr, resp.SealCommitPhase1OutputLen)), nil
+	return copyBytes(resp.SealCommitPhase1OutputPtr, resp.SealCommitPhase1OutputLen), nil
 }
 
 // SealCommitPhase2
@@ -475,7 +475,7 @@ func SealCommitPhase2(
 		return nil, err
 	}
 
-	resp := generated.FilSealCommitPhase2(string(phase1Output), uint(len(phase1Output)), uint64(sectorNum), proverID)
+	resp := generated.FilSealCommitPhase2(phase1Output, uint(len(phase1Output)), uint64(sectorNum), proverID)
 	resp.Deref()
 
 	defer generated.FilDestroySealCommitPhase2Response(resp)
@@ -484,7 +484,7 @@ func SealCommitPhase2(
 		return nil, errors.New(generated.RawString(resp.ErrorMsg).Copy())
 	}
 
-	return []byte(toGoStringCopy(resp.ProofPtr, resp.ProofLen)), nil
+	return copyBytes(resp.ProofPtr, resp.ProofLen), nil
 }
 
 // Unseal
@@ -655,6 +655,7 @@ func GenerateWindowPoSt(
 	resp.Deref()
 	resp.ProofsPtr = make([]generated.FilPoStProof, resp.ProofsLen)
 	resp.Deref()
+	resp.FaultySectorsPtr = resp.FaultySectorsPtr[:resp.FaultySectorsLen]
 
 	defer generated.FilDestroyGenerateWindowPostResponse(resp)
 
@@ -850,8 +851,30 @@ func toFilPublicReplicaInfos(src []proof.SectorInfo, typ string) ([]generated.Fi
 	return out, uint(len(out)), nil
 }
 
+func toFilPrivateReplicaInfo(src PrivateSectorInfo) (generated.FilPrivateReplicaInfo, func(), error) {
+	commR, err := to32ByteCommR(src.SealedCID)
+	if err != nil {
+		return generated.FilPrivateReplicaInfo{}, func() {}, err
+	}
+
+	pp, err := toFilRegisteredPoStProof(src.PoStProofType)
+	if err != nil {
+		return generated.FilPrivateReplicaInfo{}, func() {}, err
+	}
+
+	out := generated.FilPrivateReplicaInfo{
+		RegisteredProof: pp,
+		CacheDirPath:    src.CacheDirPath,
+		CommR:           commR.Inner,
+		ReplicaPath:     src.SealedSectorPath,
+		SectorId:        uint64(src.SectorNumber),
+	}
+	_, allocs := out.PassRef()
+	return out, allocs.Free, nil
+}
+
 func toFilPrivateReplicaInfos(src []PrivateSectorInfo, typ string) ([]generated.FilPrivateReplicaInfo, uint, func(), error) {
-	frees := make([]func(), len(src))
+	allocs := make([]AllocationManager, len(src))
 
 	out := make([]generated.FilPrivateReplicaInfo, len(src))
 
@@ -874,12 +897,12 @@ func toFilPrivateReplicaInfos(src []PrivateSectorInfo, typ string) ([]generated.
 			SectorId:        uint64(src[idx].SectorNumber),
 		}
 
-		frees[idx] = out[idx].AllocateProxy()
+		_, allocs[idx] = out[idx].PassRef()
 	}
 
 	return out, uint(len(out)), func() {
-		for idx := range frees {
-			frees[idx]()
+		for idx := range allocs {
+			allocs[idx].Free()
 		}
 	}, nil
 }
@@ -918,7 +941,7 @@ func fromFilPoStProofs(src []generated.FilPoStProof) ([]proof.PoStProof, error) 
 
 		out[idx] = proof.PoStProof{
 			PoStProof:  pp,
-			ProofBytes: []byte(toGoStringCopy(src[idx].ProofPtr, src[idx].ProofLen)),
+			ProofBytes: copyBytes(src[idx].ProofPtr, src[idx].ProofLen),
 		}
 	}
 
@@ -926,7 +949,7 @@ func fromFilPoStProofs(src []generated.FilPoStProof) ([]proof.PoStProof, error) 
 }
 
 func toFilPoStProofs(src []proof.PoStProof) ([]generated.FilPoStProof, uint, func(), error) {
-	frees := make([]func(), len(src))
+	allocs := make([]AllocationManager, len(src))
 
 	out := make([]generated.FilPoStProof, len(src))
 	for idx := range out {
@@ -938,15 +961,15 @@ func toFilPoStProofs(src []proof.PoStProof) ([]generated.FilPoStProof, uint, fun
 		out[idx] = generated.FilPoStProof{
 			RegisteredProof: pp,
 			ProofLen:        uint(len(src[idx].ProofBytes)),
-			ProofPtr:        string(src[idx].ProofBytes),
+			ProofPtr:        src[idx].ProofBytes,
 		}
 
-		frees[idx] = out[idx].AllocateProxy()
+		_, allocs[idx] = out[idx].PassRef()
 	}
 
 	return out, uint(len(out)), func() {
-		for idx := range frees {
-			frees[idx]()
+		for idx := range allocs {
+			allocs[idx].Free()
 		}
 	}, nil
 }
@@ -978,6 +1001,7 @@ func fromFilRegisteredPoStProof(p generated.FilRegisteredPoStProof) (abi.Registe
 		return abi.RegisteredPoStProof_StackedDrgWinning32GiBV1, nil
 	case generated.FilRegisteredPoStProofStackedDrgWinning64GiBV1:
 		return abi.RegisteredPoStProof_StackedDrgWinning64GiBV1, nil
+
 	case generated.FilRegisteredPoStProofStackedDrgWindow2KiBV1:
 		return abi.RegisteredPoStProof_StackedDrgWindow2KiBV1, nil
 	case generated.FilRegisteredPoStProofStackedDrgWindow8MiBV1:
@@ -1005,6 +1029,7 @@ func toFilRegisteredPoStProof(p abi.RegisteredPoStProof) (generated.FilRegistere
 		return generated.FilRegisteredPoStProofStackedDrgWinning32GiBV1, nil
 	case abi.RegisteredPoStProof_StackedDrgWinning64GiBV1:
 		return generated.FilRegisteredPoStProofStackedDrgWinning64GiBV1, nil
+
 	case abi.RegisteredPoStProof_StackedDrgWindow2KiBV1:
 		return generated.FilRegisteredPoStProofStackedDrgWindow2KiBV1, nil
 	case abi.RegisteredPoStProof_StackedDrgWindow8MiBV1:
@@ -1032,6 +1057,17 @@ func toFilRegisteredSealProof(p abi.RegisteredSealProof) (generated.FilRegistere
 		return generated.FilRegisteredSealProofStackedDrg32GiBV1, nil
 	case abi.RegisteredSealProof_StackedDrg64GiBV1:
 		return generated.FilRegisteredSealProofStackedDrg64GiBV1, nil
+
+	case abi.RegisteredSealProof_StackedDrg2KiBV1_1:
+		return generated.FilRegisteredSealProofStackedDrg2KiBV11, nil
+	case abi.RegisteredSealProof_StackedDrg8MiBV1_1:
+		return generated.FilRegisteredSealProofStackedDrg8MiBV11, nil
+	case abi.RegisteredSealProof_StackedDrg512MiBV1_1:
+		return generated.FilRegisteredSealProofStackedDrg512MiBV11, nil
+	case abi.RegisteredSealProof_StackedDrg32GiBV1_1:
+		return generated.FilRegisteredSealProofStackedDrg32GiBV11, nil
+	case abi.RegisteredSealProof_StackedDrg64GiBV1_1:
+		return generated.FilRegisteredSealProofStackedDrg64GiBV11, nil
 	default:
 		return 0, errors.Errorf("no mapping to C.FFIRegisteredSealProof value available for: %v", p)
 	}
@@ -1064,12 +1100,36 @@ func to32ByteCommP(pieceCID cid.Cid) (generated.Fil32ByteArray, error) {
 	return to32ByteArray(commP), nil
 }
 
-func toGoStringCopy(raw string, rawLen uint) string {
-	h := (*stringHeader)(unsafe.Pointer(&raw))
-	return C.GoStringN((*C.char)(h.Data), C.int(rawLen))
+func copyBytes(v []byte, vLen uint) []byte {
+	buf := make([]byte, vLen)
+	if n := copy(buf, v[:vLen]); n != int(vLen) {
+		panic("partial read")
+	}
+
+	return buf
 }
 
 type stringHeader struct {
 	Data unsafe.Pointer
 	Len  int
+}
+
+func toVanillaProofs(src [][]byte) ([]generated.FilVanillaProof, func()) {
+	allocs := make([]AllocationManager, len(src))
+
+	out := make([]generated.FilVanillaProof, len(src))
+	for idx := range out {
+		out[idx] = generated.FilVanillaProof{
+			ProofLen: uint(len(src[idx])),
+			ProofPtr: src[idx],
+		}
+
+		_, allocs[idx] = out[idx].PassRef()
+	}
+
+	return out, func() {
+		for idx := range allocs {
+			allocs[idx].Free()
+		}
+	}
 }
