@@ -1089,7 +1089,9 @@ func SealPreCommitPhase1Tree(
 		return nil, errors.New(generated.RawString(resp.ErrorMsg).Copy())
 	}
 
-	return []byte(toGoStringCopy(resp.SealPreCommitPhase1OutputPtr, resp.SealPreCommitPhase1OutputLen)), nil
+	return copyBytes(resp.SealPreCommitPhase1OutputPtr, resp.SealPreCommitPhase1OutputLen), nil
+
+	//return []byte(toGoStringCopy(resp.SealPreCommitPhase1OutputPtr, resp.SealPreCommitPhase1OutputLen)), nil
 }
 
 
@@ -1129,7 +1131,7 @@ func SealPreCommitPhase1Layer(
 		return nil, errors.New(generated.RawString(resp.ErrorMsg).Copy())
 	}
 
-	return []byte(toGoStringCopy(resp.SealPreCommitPhase1OutputPtr, resp.SealPreCommitPhase1OutputLen)), nil
+	return copyBytes(resp.SealPreCommitPhase1OutputPtr, resp.SealPreCommitPhase1OutputLen), nil
 
 }
 
